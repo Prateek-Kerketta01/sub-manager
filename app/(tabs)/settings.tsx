@@ -1,12 +1,30 @@
 import { useClerk } from "@clerk/expo";
 import { styled } from "nativewind";
-import React from "react";
+import React, { useState } from "react";
 import { Pressable, Text } from "react-native";
 import { SafeAreaView as RNSafeAreaView } from "react-native-safe-area-context";
 const SafeAreaView = styled(RNSafeAreaView);
 
 const Settings = () => {
   const { signOut } = useClerk();
+  const [error, setError] = useState<string | null>(null);
+  const [isSigningOut, setIsSigningOut] = useState(false);
+
+  const handleSignOut = async () => {
+    setError(null);
+    setIsSigningOut(true);
+
+    try {
+      await signOut();
+    } catch (signOutError) {
+      setError(
+        signOutError instanceof Error
+          ? signOutError.message
+          : String(signOutError),
+      );
+      setIsSigningOut(false);
+    }
+  };
 
   return (
     <SafeAreaView className="flex-1 p-5 bg-background">
@@ -14,11 +32,15 @@ const Settings = () => {
         Settings
       </Text>
       <Pressable
-        onPress={() => signOut()}
-        className="items-center rounded-2xl bg-accent py-4"
+        onPress={handleSignOut}
+        disabled={isSigningOut}
+        className={`items-center rounded-2xl bg-accent py-4 ${isSigningOut ? "opacity-50" : ""}`}
       >
-        <Text className="text-base font-sans-bold text-primary">Log out</Text>
+        <Text className="text-base font-sans-bold text-primary">
+          {isSigningOut ? "Signing out…" : "Log out"}
+        </Text>
       </Pressable>
+      {error ? <Text className="mt-3 text-sm text-danger">{error}</Text> : null}
     </SafeAreaView>
   );
 };

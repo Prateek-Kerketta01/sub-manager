@@ -85,10 +85,45 @@ const SignIn = () => {
           if (url.startsWith("http") && typeof window !== "undefined") {
             window.location.href = url;
           } else {
-            router.replace(url);
+            router.replace(url as any);
           }
         },
       });
+      return;
+    }
+
+    if (
+      signIn?.status === "needs_client_trust" ||
+      signIn?.status === "needs_second_factor"
+    ) {
+      const strategies = signIn.supportedSecondFactors ?? [];
+      const hasEmail = strategies.some(
+        (factor) =>
+          factor.strategy === "email_code" || factor.strategy === "email_link",
+      );
+      const hasPhone = strategies.some(
+        (factor) => factor.strategy === "phone_code",
+      );
+
+      if (hasEmail) {
+        const { error: sendError } = await signIn.mfa.sendEmailCode();
+        if (sendError) {
+          setFormError(
+            sendError.longMessage ||
+              sendError.message ||
+              "Unable to send verification code. Please try again.",
+          );
+        }
+      } else if (hasPhone) {
+        const { error: sendError } = await signIn.mfa.sendPhoneCode();
+        if (sendError) {
+          setFormError(
+            sendError.longMessage ||
+              sendError.message ||
+              "Unable to send verification code. Please try again.",
+          );
+        }
+      }
     }
   };
 
@@ -101,25 +136,52 @@ const SignIn = () => {
       return;
     }
 
-    try {
-      await signIn.mfa.verifyEmailCode({ code: code.trim() });
-      if (signIn?.status === "complete") {
-        await signIn.finalize({
-          navigate: ({ session, decorateUrl }) => {
-            if (session?.currentTask) {
-              return;
-            }
-            const url = decorateUrl("/");
-            if (url.startsWith("http") && typeof window !== "undefined") {
-              window.location.href = url;
-            } else {
-              router.replace(url);
-            }
-          },
-        });
-      }
-    } catch {
-      setFormError("We couldn’t verify that code. Please try again.");
+    const strategies = signIn.supportedSecondFactors ?? [];
+    const hasEmail = strategies.some(
+      (factor) =>
+        factor.strategy === "email_code" || factor.strategy === "email_link",
+    );
+    const hasPhone = strategies.some(
+      (factor) => factor.strategy === "phone_code",
+    );
+    const hasTotp = strategies.some((factor) => factor.strategy === "totp");
+
+    let verifyResult: { error?: any } = {};
+
+    if (hasEmail) {
+      verifyResult = await signIn.mfa.verifyEmailCode({ code: code.trim() });
+    } else if (hasPhone) {
+      verifyResult = await signIn.mfa.verifyPhoneCode({ code: code.trim() });
+    } else if (hasTotp && signIn?.status === "needs_second_factor") {
+      verifyResult = await signIn.mfa.verifyTOTP({ code: code.trim() });
+    } else {
+      setFormError("No supported verification method is available.");
+      return;
+    }
+
+    if (verifyResult.error) {
+      setFormError(
+        verifyResult.error.longMessage ||
+          verifyResult.error.message ||
+          "Verification failed. Please try again.",
+      );
+      return;
+    }
+
+    if (signIn?.status === "complete") {
+      await signIn.finalize({
+        navigate: ({ session, decorateUrl }) => {
+          if (session?.currentTask) {
+            return;
+          }
+          const url = decorateUrl("/");
+          if (url.startsWith("http") && typeof window !== "undefined") {
+            window.location.href = url;
+          } else {
+            router.replace(url as any);
+          }
+        },
+      });
     }
   };
 
@@ -215,7 +277,9 @@ const SignIn = () => {
                     keyboardType="numeric"
                     className={`auth-input ${localErrors.code ? "auth-input-error" : ""}`}
                   />
-                  <Text className="auth-error">{localErrors.code}</Text>
+                  <Text className="auth-error">
+                    {localErrors.code || errors.fields?.code?.message}
+                  </Text>
                 </View>
               ) : null}
 

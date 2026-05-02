@@ -102,7 +102,17 @@ const SignUp = () => {
         },
       });
     } else if (!needsVerification) {
-      await signUp.verifications.sendEmailCode();
+      const { error: sendEmailError } =
+        await signUp.verifications.sendEmailCode();
+      if (sendEmailError) {
+        setFormError(
+          sendEmailError.longMessage ||
+            sendEmailError.message ||
+            sendEmailError.code ||
+            "Unable to send verification email",
+        );
+        return;
+      }
     }
   };
 
@@ -115,25 +125,33 @@ const SignUp = () => {
       return;
     }
 
-    try {
-      await signUp.verifications.verifyEmailCode({ code: code.trim() });
-      if (signUp?.status === "complete") {
-        await signUp.finalize({
-          navigate: ({ session, decorateUrl }) => {
-            if (session?.currentTask) {
-              return;
-            }
-            const url = decorateUrl("/");
-            if (url.startsWith("http") && typeof window !== "undefined") {
-              window.location.href = url;
-            } else {
-              router.replace(url);
-            }
-          },
-        });
-      }
-    } catch {
-      setFormError("We couldn’t verify that code. Please try again.");
+    const { error: verifyError } = await signUp.verifications.verifyEmailCode({
+      code: code.trim(),
+    });
+
+    if (verifyError) {
+      setFormError(
+        verifyError.longMessage ||
+          verifyError.message ||
+          "We couldn’t verify that code. Please try again.",
+      );
+      return;
+    }
+
+    if (signUp?.status === "complete") {
+      await signUp.finalize({
+        navigate: ({ session, decorateUrl }) => {
+          if (session?.currentTask) {
+            return;
+          }
+          const url = decorateUrl("/");
+          if (url.startsWith("http") && typeof window !== "undefined") {
+            window.location.href = url;
+          } else {
+            router.replace(url);
+          }
+        },
+      });
     }
   };
 
@@ -245,7 +263,9 @@ const SignUp = () => {
                     keyboardType="numeric"
                     className={`auth-input ${localErrors.code ? "auth-input-error" : ""}`}
                   />
-                  <Text className="auth-error">{localErrors.code}</Text>
+                  <Text className="auth-error">
+                    {localErrors.code || errors.fields?.code?.message}
+                  </Text>
                 </View>
               ) : null}
 
