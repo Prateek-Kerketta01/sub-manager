@@ -1,6 +1,7 @@
 import { useAuth, useSignUp } from "@clerk/expo";
 import { Link, Redirect, useRouter } from "expo-router";
 import { styled } from "nativewind";
+import { usePostHog } from "posthog-react-native";
 import React, { useMemo, useState } from "react";
 import {
   KeyboardAvoidingView,
@@ -20,6 +21,7 @@ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const SignUp = () => {
   const router = useRouter();
+  const posthog = usePostHog();
   const { isLoaded, isSignedIn } = useAuth();
   const { signUp, errors, fetchStatus } = useSignUp();
   const [emailAddress, setEmailAddress] = useState("");
@@ -79,6 +81,10 @@ const SignUp = () => {
     });
 
     if (error) {
+      posthog.capture("sign_up_failed", {
+        error_code: error.code,
+        error_message: error.message,
+      });
       setFormError(
         error.longMessage ||
           error.message ||
@@ -88,6 +94,11 @@ const SignUp = () => {
     }
 
     if (signUp?.status === "complete") {
+      posthog.identify(emailAddress.trim(), {
+        $set: { email: emailAddress.trim() },
+        $set_once: { sign_up_date: new Date().toISOString() },
+      });
+      posthog.capture("sign_up_completed");
       await signUp.finalize({
         navigate: ({ session, decorateUrl }) => {
           if (session?.currentTask) {
@@ -139,6 +150,11 @@ const SignUp = () => {
     }
 
     if (signUp?.status === "complete") {
+      posthog.identify(emailAddress.trim(), {
+        $set: { email: emailAddress.trim() },
+        $set_once: { sign_up_date: new Date().toISOString() },
+      });
+      posthog.capture("sign_up_completed", { email_verified: true });
       await signUp.finalize({
         navigate: ({ session, decorateUrl }) => {
           if (session?.currentTask) {

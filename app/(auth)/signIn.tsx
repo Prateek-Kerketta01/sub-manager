@@ -1,6 +1,7 @@
 import { useAuth, useSignIn } from "@clerk/expo";
 import { Link, Redirect, useRouter } from "expo-router";
 import { styled } from "nativewind";
+import { usePostHog } from "posthog-react-native";
 import React, { useMemo, useState } from "react";
 import {
   KeyboardAvoidingView,
@@ -20,6 +21,7 @@ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const SignIn = () => {
   const router = useRouter();
+  const posthog = usePostHog();
   const { isLoaded, isSignedIn } = useAuth();
   const { signIn, errors, fetchStatus } = useSignIn();
   const [emailAddress, setEmailAddress] = useState("");
@@ -66,6 +68,10 @@ const SignIn = () => {
     });
 
     if (error) {
+      posthog.capture("sign_in_failed", {
+        error_code: error.code,
+        error_message: error.message,
+      });
       setFormError(
         error.longMessage ||
           error.message ||
@@ -75,6 +81,10 @@ const SignIn = () => {
     }
 
     if (signIn?.status === "complete") {
+      posthog.identify(emailAddress.trim(), {
+        $set: { email: emailAddress.trim() },
+      });
+      posthog.capture("sign_in_completed");
       await signIn.finalize({
         navigate: ({ session, decorateUrl }) => {
           if (session?.currentTask) {
@@ -169,6 +179,10 @@ const SignIn = () => {
     }
 
     if (signIn?.status === "complete") {
+      posthog.identify(emailAddress.trim(), {
+        $set: { email: emailAddress.trim() },
+      });
+      posthog.capture("sign_in_completed", { method: "mfa" });
       await signIn.finalize({
         navigate: ({ session, decorateUrl }) => {
           if (session?.currentTask) {
